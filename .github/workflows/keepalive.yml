@@ -1,10 +1,11 @@
 name: OptikLink Auto Cookie KeepAlive
 
 on:
-  # 如果不使用 GitHub 自带的定时触发，必须删掉 schedule 或正确配置它
+  schedule:
+    - cron: '0 */1 * * *'  # 每 1 小时自动跑一次
   repository_dispatch:
     types: [keepalive_trigger]
-  workflow_dispatch:        # 保留手动运行按钮
+  workflow_dispatch:
 
 jobs:
   run-task:
@@ -29,5 +30,4 @@ jobs:
           USER_COOKIE: ${{ secrets.USER_COOKIE }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        # node login.js 后面不加 || true，方便我们在 Actions 里看到真实的报错原因
         run: node login.js
