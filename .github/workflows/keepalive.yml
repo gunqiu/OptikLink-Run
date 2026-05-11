@@ -2,10 +2,10 @@ name: OptikLink Auto Cookie KeepAlive
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时自动运行
+    - cron: '0 */6 * * *'  # 每 6 小时自动运行一次
   repository_dispatch:
     types: [keepalive_trigger]
-  workflow_dispatch:
+  workflow_dispatch:        # 保留手动运行按钮
 
 jobs:
   run-task:
@@ -30,4 +30,5 @@ jobs:
           USER_COOKIE: ${{ secrets.USER_COOKIE }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # node login.js 后面不加 || true，方便我们在 Actions 里看到真实的报错原因
         run: node login.js
