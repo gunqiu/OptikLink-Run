@@ -1,10 +1,12 @@
 {
-  "name": "optiklink-keepalive",
+  "name": "optiklink-renew",
   "version": "1.0.0",
+  "description": "OptikLink 免费服务器自动登录保活",
   "scripts": {
-    "test": "playwright test"
+    "test": "npx playwright test"
   },
-  "devDependencies": {
-    "@playwright/test": "^1.44.0"
+  "dependencies": {
+    "@playwright/test": "^1.60.0",
+    "proxy-chain": "^2.7.1"
   }
 }
