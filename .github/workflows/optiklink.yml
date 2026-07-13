@@ -8,6 +8,10 @@ on:
 jobs:
   renew:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write   # 允许删除 workflow runs
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +43,6 @@ jobs:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           TG_BOT: ${{ secrets.TG_CHAT_ID }},${{ secrets.TG_BOT_TOKEN }}
           PROXY_URL: "socks5://127.0.0.1:1080"
-          # Pterodactyl 开机检测（可选，不配就跳过）
           PTERODACTYL_API_KEY: ${{ secrets.PTERODACTYL_API_KEY }}
           PTERODACTYL_PANEL_URL: ${{ secrets.PTERODACTYL_PANEL_URL }}
           PTERODACTYL_SERVER_ID: ${{ secrets.PTERODACTYL_SERVER_ID }}
@@ -53,3 +56,23 @@ jobs:
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+      # ─────────── 新增：自动清理旧运行记录，保留最近 3 条 ───────────
+      - name: Clean up old workflow runs (keep latest 3)
+        if: always()          # 无论主任务成功或失败都执行
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # GitHub CLI 自动使用此 Token
+        run: |
+          # 确保 GitHub CLI 已安装（Ubuntu 通常预装，但为防止缺失）
+          if ! command -v gh &> /dev/null; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update && sudo apt install gh -y
+          fi
+
+          # 获取所有运行记录 ID（按时间倒序），跳过最新的 3 条，删除其余
+          # --limit 200 可根据您的记录总数调整
+          gh run list --limit 200 --json databaseId --jq '.[3:][].databaseId' | while read -r id; do
+            echo "Deleting run ID: $id"
+            gh run delete "$id" --yes
+          done
