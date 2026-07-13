@@ -57,22 +57,22 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      # ─────────── 新增：自动清理旧运行记录，保留最近 3 条 ───────────
+      # 清理旧运行记录，只保留最新的 3 条（包括当前运行）
       - name: Clean up old workflow runs (keep latest 3)
-        if: always()          # 无论主任务成功或失败都执行
+        if: always()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # GitHub CLI 自动使用此 Token
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 确保 GitHub CLI 已安装（Ubuntu 通常预装，但为防止缺失）
+          # 确保 GitHub CLI 已安装（Ubuntu 通常预装，但以防缺失）
           if ! command -v gh &> /dev/null; then
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update && sudo apt install gh -y
+            sudo apt update && sudo apt install -y gh
           fi
 
           # 获取所有运行记录 ID（按时间倒序），跳过最新的 3 条，删除其余
-          # --limit 200 可根据您的记录总数调整
+          # --limit 200 可根据您的总记录数调整
           gh run list --limit 200 --json databaseId --jq '.[3:][].databaseId' | while read -r id; do
             echo "Deleting run ID: $id"
-            gh run delete "$id" --yes
+            echo y | gh run delete "$id"   # 用 echo y 兼容旧版 gh，无需 --yes
           done
