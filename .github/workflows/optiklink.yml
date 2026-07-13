@@ -22,81 +22,16 @@ jobs:
           npm install
           npx playwright install chromium --with-deps
 
-      - name: Install & start sing-box
+      - name: Install & start v2ray
         run: |
-          curl -fsSL https://sing-box.app/install.sh | sh
+          wget -q https://github.com/v2fly/v2ray-core/releases/download/v5.16.1/v2ray-linux-64.zip
+          unzip -o v2ray-linux-64.zip -d /usr/local/bin/
+          chmod +x /usr/local/bin/v2ray
 
-          sudo apt-get update && sudo apt-get install -y golang-go
+          echo '${{ secrets.V2RAY_CONFIG }}' > /tmp/v2ray.json
 
-          git clone --depth 1 https://github.com/Fanju6/Proxylink.git /tmp/proxylink
-          cd /tmp/proxylink
-          go build -o /usr/local/bin/proxylink .
-
-          cat > /tmp/sing-box.json << 'EOF'
-          {
-            "log": {
-              "level": "warn",
-              "timestamp": true
-            },
-            "inbounds": [
-              {
-                "type": "mixed",
-                "tag": "mixed-in",
-                "listen": "127.0.0.1",
-                "listen_port": 1080
-              }
-            ],
-            "outbounds": [
-              {
-                "type": "direct",
-                "tag": "direct"
-              },
-              {
-                "type": "block",
-                "tag": "block"
-              }
-            ],
-            "route": {
-              "final": "direct"
-            }
-          }
-          EOF
-
-          NODE_URI="${{ secrets.SINGBOX_NODE_URI }}"
-
-          if [ -n "$NODE_URI" ]; then
-            proxylink -parse "$NODE_URI" -format singbox -o /tmp/node_outbound.json
-
-            python3 -c "
-import json
-
-with open('/tmp/sing-box.json', 'r') as f:
-    config = json.load(f)
-
-with open('/tmp/node_outbound.json', 'r') as f:
-    node_config = json.load(f)
-
-if 'outbounds' in node_config and len(node_config['outbounds']) > 0:
-    outbound = node_config['outbounds'][0]
-    if 'tag' not in outbound:
-        outbound['tag'] = 'proxy'
-    config['outbounds'].insert(0, outbound)
-    config['route']['final'] = outbound['tag']
-else:
-    raise SystemExit('ERROR: No valid outbound found in converted config')
-
-with open('/tmp/sing-box.json', 'w') as f:
-    json.dump(config, f, indent=2)
-"
-          else
-            echo "ERROR: SINGBOX_NODE_URI secret is not set"
-            exit 1
-          fi
-
-          sing-box check -c /tmp/sing-box.json
-          sing-box run -c /tmp/sing-box.json &
+          /usr/local/bin/v2ray run -config /tmp/v2ray.json &
           sleep 3
-
           curl -s --socks5 127.0.0.1:1080 --connect-timeout 15 https://api.ipify.org || echo "proxy test failed"
 
       - name: Run login script
@@ -104,6 +39,10 @@ with open('/tmp/sing-box.json', 'w') as f:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           TG_BOT: ${{ secrets.TG_CHAT_ID }},${{ secrets.TG_BOT_TOKEN }}
           PROXY_URL: "socks5://127.0.0.1:1080"
+          # Pterodactyl 开机检测（可选，不配就跳过）
+          PTERODACTYL_API_KEY: ${{ secrets.PTERODACTYL_API_KEY }}
+          PTERODACTYL_PANEL_URL: ${{ secrets.PTERODACTYL_PANEL_URL }}
+          PTERODACTYL_SERVER_ID: ${{ secrets.PTERODACTYL_SERVER_ID }}
         run: npx playwright test
 
       - name: Upload screenshots
