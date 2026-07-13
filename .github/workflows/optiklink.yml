@@ -8,6 +8,7 @@ on:
 jobs:
   renew:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,23 +20,34 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install
+          npm ci
           npx playwright install chromium --with-deps
 
-      - name: Install & start sing-box
+      - name: Install sing-box and proxylink
         run: |
-          # 下载并安装 sing-box 最新稳定版
+          set -e
+
           curl -fsSL https://sing-box.app/install.sh | sh
 
-          # 安装 Go 环境（用于编译 proxylink）
-          sudo apt-get update && sudo apt-get install -y golang-go
+          sudo apt-get update
+          sudo apt-get install -y golang-go
 
-          # 下载并编译 proxylink（URI 转 sing-box outbound 工具）
+          rm -rf /tmp/proxylink
           git clone --depth 1 https://github.com/Fanju6/Proxylink.git /tmp/proxylink
-          cd /tmp/proxylink/Proxylink
+          cd /tmp/proxylink
           go build -o /usr/local/bin/proxylink .
 
-          # 创建 sing-box 基础配置文件
+      - name: Build sing-box config
+        env:
+          NODE_URI: ${{ secrets.SINGBOX_NODE_URI }}
+        run: |
+          set -e
+
+          if [ -z "$NODE_URI" ]; then
+            echo "ERROR: SINGBOX_NODE_URI secret is not set"
+            exit 1
+          fi
+
           cat > /tmp/sing-box.json << 'EOF'
           {
             "log": {
@@ -66,64 +78,56 @@ jobs:
           }
           EOF
 
-          # 从 secrets 读取节点分享链接并转换为 sing-box outbound 配置
-          # 支持协议：vless / vmess / trojan / tuic / anytls / hysteria2 / socks5 / socks
-          # 格式：完整分享链接，如 vless://uuid@server:port?...
+          proxylink -parse "$NODE_URI" -format singbox -o /tmp/node_outbound.json
 
-          NODE_URI="${{ secrets.SINGBOX_NODE_URI }}"
+          python3 - <<'PY'
+          import json, sys
 
-          if [ -n "$NODE_URI" ]; then
-            echo "Converting URI to sing-box outbound config..."
+          with open('/tmp/sing-box.json', 'r', encoding='utf-8') as f:
+              config = json.load(f)
 
-            # 使用 proxylink 将 URI 转换为 sing-box 配置
-            proxylink -parse "$NODE_URI" -format singbox -o /tmp/node_outbound.json
+          with open('/tmp/node_outbound.json', 'r', encoding='utf-8') as f:
+              node_config = json.load(f)
 
-            # 提取 outbound 配置并合并到主配置
-            python3 -c "
-import json
+          if 'outbounds' not in node_config or not node_config['outbounds']:
+              print('ERROR: No valid outbound found in converted config')
+              sys.exit(1)
 
-with open('/tmp/sing-box.json', 'r') as f:
-    config = json.load(f)
+          outbound = node_config['outbounds'][0]
+          if 'tag' not in outbound:
+              outbound['tag'] = 'proxy'
 
-with open('/tmp/node_outbound.json', 'r') as f:
-    node_config = json.load(f)
+          config['outbounds'].insert(0, outbound)
+          config['route']['final'] = outbound['tag']
 
-# 提取 outbounds 数组中的第一个节点
-if 'outbounds' in node_config and len(node_config['outbounds']) > 0:
-    outbound = node_config['outbounds'][0]
-    # 确保 tag 存在
-    if 'tag' not in outbound:
-        outbound['tag'] = 'proxy'
-    config['outbounds'].insert(0, outbound)
-    config['route']['final'] = outbound['tag']
-    print(f\"Added outbound: {outbound['tag']} ({outbound.get('type', 'unknown')})\")
-else:
-    print('ERROR: No valid outbound found in converted config')
-    exit(1)
+          with open('/tmp/sing-box.json', 'w', encoding='utf-8') as f:
+              json.dump(config, f, indent=2, ensure_ascii=False)
 
-with open('/tmp/sing-box.json', 'w') as f:
-    json.dump(config, f, indent=2)
-"
-          else
-            echo "ERROR: SINGBOX_NODE_URI secret is not set"
-            exit 1
-          fi
+          print(f"Added outbound: {outbound['tag']} ({outbound.get('type', 'unknown')})")
+          PY
 
-          # 验证配置
-          sing-box check -c /tmp/sing-box.json || exit 1
+      - name: Check sing-box config
+        run: |
+          set -e
+          sing-box check -c /tmp/sing-box.json
 
-          # 启动 sing-box
-          sing-box run -c /tmp/sing-box.json &
+      - name: Start sing-box
+        run: |
+          set -e
+          nohup sing-box run -c /tmp/sing-box.json >/tmp/sing-box.log 2>&1 &
           sleep 3
+          cat /tmp/sing-box.log || true
 
-          # 测试代理连通性
+      - name: Test proxy
+        run: |
+          set -e
           curl -s --socks5 127.0.0.1:1080 --connect-timeout 15 https://api.ipify.org || echo "proxy test failed"
 
       - name: Run login script
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           TG_BOT: ${{ secrets.TG_CHAT_ID }},${{ secrets.TG_BOT_TOKEN }}
-          PROXY_URL: "socks5://127.0.0.1:1080"
+          PROXY_URL: socks5://127.0.0.1:1080
         run: npx playwright test
 
       - name: Upload screenshots
