@@ -26,15 +26,15 @@ jobs:
         run: |
           # 下载并安装 sing-box 最新稳定版
           curl -fsSL https://sing-box.app/install.sh | sh
-          
+
           # 安装 Go 环境（用于编译 proxylink）
           sudo apt-get update && sudo apt-get install -y golang-go
-          
+
           # 下载并编译 proxylink（URI 转 sing-box outbound 工具）
           git clone --depth 1 https://github.com/Fanju6/Proxylink.git /tmp/proxylink
           cd /tmp/proxylink/Proxylink
           go build -o /usr/local/bin/proxylink .
-          
+
           # 创建 sing-box 基础配置文件
           cat > /tmp/sing-box.json << 'EOF'
           {
@@ -65,19 +65,19 @@ jobs:
             }
           }
           EOF
-          
+
           # 从 secrets 读取节点分享链接并转换为 sing-box outbound 配置
           # 支持协议：vless / vmess / trojan / tuic / anytls / hysteria2 / socks5 / socks
           # 格式：完整分享链接，如 vless://uuid@server:port?...
-          
+
           NODE_URI="${{ secrets.SINGBOX_NODE_URI }}"
-          
+
           if [ -n "$NODE_URI" ]; then
             echo "Converting URI to sing-box outbound config..."
-            
+
             # 使用 proxylink 将 URI 转换为 sing-box 配置
             proxylink -parse "$NODE_URI" -format singbox -o /tmp/node_outbound.json
-            
+
             # 提取 outbound 配置并合并到主配置
             python3 -c "
 import json
@@ -108,14 +108,14 @@ with open('/tmp/sing-box.json', 'w') as f:
             echo "ERROR: SINGBOX_NODE_URI secret is not set"
             exit 1
           fi
-          
+
           # 验证配置
           sing-box check -c /tmp/sing-box.json || exit 1
-          
+
           # 启动 sing-box
           sing-box run -c /tmp/sing-box.json &
           sleep 3
-          
+
           # 测试代理连通性
           curl -s --socks5 127.0.0.1:1080 --connect-timeout 15 https://api.ipify.org || echo "proxy test failed"
 
